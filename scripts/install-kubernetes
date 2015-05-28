@@ -1,0 +1,30 @@
+#!/bin/bash
+set -e
+source /etc/kubernetes.env
+
+if [ -f /opt/kubernetes-${KUBERNETES_VERSION}/bin/kubelet ]; then
+  exit 0
+fi
+
+cd /tmp
+
+if [ ! -f kubernetes-${KUBERNETES_VERSION}.tar.gz ]; then
+  curl -o kubernetes-${KUBERNETES_VERSION}.tar.gz -L -s https://github.com/GoogleCloudPlatform/kubernetes/releases/download/v${KUBERNETES_VERSION}/kubernetes.tar.gz
+fi
+
+if [ -d kubernetes ]; then
+  rm -rf kubernetes
+fi
+
+tar -zxf kubernetes-${KUBERNETES_VERSION}.tar.gz
+mkdir -p /opt/kubernetes-${KUBERNETES_VERSION}
+tar -C /opt/kubernetes-${KUBERNETES_VERSION} --strip-components=2 -zxf kubernetes/server/kubernetes-server-linux-amd64.tar.gz
+rm /opt/kubernetes-${KUBERNETES_VERSION}/bin/*.tar
+rm /opt/kubernetes-${KUBERNETES_VERSION}/bin/*.docker_tag
+
+chmod -R 755 /opt/kubernetes-${KUBERNETES_VERSION}/bin
+
+mkdir -p /opt/bin
+for P in /opt/kubernetes-${KUBERNETES_VERSION}/bin/*; do
+  ln -sf $P /opt/bin/
+done
