@@ -54,12 +54,30 @@ resource "aws_security_group" "kubernetes" {
     }
 }
 
-resource "aws_security_group_rule" "allow_all" {
+resource "aws_security_group_rule" "allow_ssh" {
+    type = "ingress"
+    from_port = 22
+    to_port = 22
+    protocol = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    security_group_id = "${aws_security_group.kubernetes.id}"
+}
+
+resource "aws_security_group_rule" "allow_kube_api" {
+    type = "ingress"
+    from_port = 6443
+    to_port = 6443
+    protocol = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    security_group_id = "${aws_security_group.kubernetes.id}"
+}
+
+resource "aws_security_group_rule" "allow_all_cluster" {
     type = "ingress"
     from_port = 0
     to_port = 65535
     protocol = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    source_security_group_id = "${aws_security_group.kubernetes.id}"
     security_group_id = "${aws_security_group.kubernetes.id}"
 }
 
@@ -76,13 +94,20 @@ resource "template_file" "kubernetes" {
     filename = "templates/kubernetes.sh"
 
     vars = {
-        etcd_dicovery_url = "${replace(file("etcd_discovery_url.txt"), "/\n*/", "")}"
+        etcd_dicovery_url = "${replace(file("etcd_discovery_url.txt"), "/\n/", "")}"
         containers_cidr = "${var.containers_cidr}"
         kubernetes_version = "${var.kubernetes_version}"
         portal_net = "${var.portal_net}"
     }
 }
 
+resource "template_file" "tokens" {
+    filename = "templates/tokens.csv"
+
+    vars = {
+        token = "${replace(file("kube_token.txt"), "/\n/", "")}"
+    }
+}
 
 resource "aws_instance" "etcd" {
     ami = "${var.ami}"
@@ -147,6 +172,9 @@ resource "aws_instance" "master" {
 
     provisioner "remote-exec" {
         inline = [
+            "cat <<'EOF' > /tmp/tokens.csv\n${template_file.tokens.rendered}\nEOF",
+            "sudo mkdir -p mkdir /etc/kubernetes",
+            "sudo mv /tmp/tokens.csv /etc/kubernetes/tokens.csv",
             "echo 'PRIVATE_IP=${self.private_ip}' > /tmp/network.env",
             "echo 'PUBLIC_IP=${self.public_ip}' >> /tmp/network.env",
             "sudo mv /tmp/network.env /etc/network.env",
@@ -172,7 +200,7 @@ resource "aws_instance" "worker" {
     }
 
     tags {
-        Name = "kubernetes-${var.cluster_name}-master"
+        Name = "kubernetes-${var.cluster_name}-worker"
         Cluster = "${var.cluster_name}"
         Role = "worker"
     }
@@ -195,7 +223,17 @@ resource "aws_instance" "worker" {
     }
 }
 
+resource "template_file" "kubectl-config" {
+    filename = "templates/kubectl-config.sh"
+    vars = {
+        cluster_name = "${var.cluster_name}"
+        token = "${replace(file("kube_token.txt"), "/\n/", "")}"
+        server = "${aws_instance.master.public_ip}"
+    }
+}
 
 output "kubernetes-api-server" {
-    value = "http://${aws_instance.master.public_ip}:8080"
+    value = "${template_file.kubectl-config.rendered}"
 }
+
+

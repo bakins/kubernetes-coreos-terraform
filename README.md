@@ -45,20 +45,15 @@ When you create a cluster, it will output something like:
 
 ```
 Outputs:
-
-  kubernetes-api-server = http://<IP>:8080
+  kubernetes-api-server =
+# Use these commands to configure kubectl
+kubectl config set-cluster testing --insecure-skip-tls-verify=true --server=IP
+kubectl config set-credentials admin --token='4c98e411'
+kubectl config set-context testing --cluster= testing --user=admin
+kubectl config use-context testing
 ```
 
-You can use this to configure `kubectl`:
-
-```
-kubectl config set-cluster aws-test --insecure-skip-tls-verify=true --server=$kubernetes-api-server
-kubectl config set-context aws-test --cluster=aws-test
-kubectl config use-context aws-test
-```
-
-where $kubernetes-api-server is the url from the output.
-
+Run these commands to configure `kubectl`.  You can see these commands again by running `terraform output kubernetes-api-server`
 
 Test this by running `kubectl get nodes`
 
@@ -66,6 +61,3 @@ Yuou should now be able to use `kubectl` to create services. See the [kubernetes
 
 ## TODO
 
-- use https for all communication
-- better security group rules. they are too open currently.
-- use tokens for user authentication for api server?

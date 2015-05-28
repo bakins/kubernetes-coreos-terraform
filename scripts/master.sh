@@ -17,9 +17,10 @@ cat <<EOF > /etc/systemd/system/etcd2.service.d/50-etcd.conf
 [Service]
 Environment=ETCD_PROXY=on
 EnvironmentFile=/etc/kubernetes.env
-EOF
 
-start etcd2
+[Install]
+WantedBy=multi-user.target
+EOF
 
 mkdir -p /opt/bin
 
@@ -29,25 +30,6 @@ chmod +x /opt/bin/install-kubernetes
 cp $DIR/wupiao /opt/bin/wupiao
 chmod +x /opt/bin/wupiao
 
-/opt/bin/wupiao http://127.0.0.1:2379/v2/members
-
-mkdir -p /etc/systemd/system/flanneld.service.d
-cat <<EOF > /etc/systemd/system/flanneld.service.d/50-network-config.conf
-[Unit]
-Requires=etcd2.service
-After=etcd2.service
-
-[Service]
-EnvironmentFile=/etc/kubernetes.env
-ExecStartPre=/opt/bin/wupiao http://127.0.0.1:2379/v2/members
-ExecStartPre=/usr/bin/etcdctl --no-sync set /coreos.com/network/config '{ "Network": "${KUBERNETES_CONTAINERS_CIDR}", "Backend":{"Type": "vxlan"} }'
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-start flanneld
-start docker
 
 cat <<EOF > /etc/systemd/system/install-kubernetes.service
 [Unit]
@@ -70,8 +52,8 @@ cat <<EOF > /etc/systemd/system/kube-apiserver.service
 [Unit]
 Description=Kubernetes API Server
 Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-After=install-kubernetes.service
-Requires=install-kubernetes.service
+After=install-kubernetes.service docker.service flanneld.service
+Requires=install-kubernetes.service docker.service flanneld.service
 
 [Service]
 EnvironmentFile=/etc/kubernetes.env
@@ -82,6 +64,7 @@ ExecStart=/opt/bin/kube-apiserver \
   --etcd-servers=http://127.0.0.1:2379 \
   --logtostderr=true \
   --insecure-port=8080 \
+  --token_auth_file=/etc/kubernetes/tokens.csv \
   --v=2 \
   --portal-net=${KUBERNETES_PORTAL_NET}
 Restart=on-failure
@@ -91,7 +74,20 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-start kube-apiserver
+mkdir -p /etc/systemd/system/flanneld.service.d
+cat <<EOF > /etc/systemd/system/flanneld.service.d/50-network-config.conf
+[Unit]
+Requires=etcd2.service
+After=etcd2.service
+
+[Service]
+EnvironmentFile=/etc/kubernetes.env
+ExecStartPre=/opt/bin/wupiao http://127.0.0.1:2379/v2/members
+ExecStartPre=/usr/bin/etcdctl --no-sync set /coreos.com/network/config '{ "Network": "${KUBERNETES_CONTAINERS_CIDR}", "Backend":{"Type": "vxlan"} }'
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 cat <<EOF > /etc/systemd/system/kube-scheduler.service
 [Unit]
@@ -113,8 +109,6 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-
-start kube-scheduler
 
 cat <<EOF > /etc/systemd/system/kube-controller-manager.service
 [Unit]
@@ -138,4 +132,6 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-start kube-controller-manager
+for S in etcd2 flanneld kube-apiserver kube-scheduler kube-controller-manager; do
+  start $S
+done
