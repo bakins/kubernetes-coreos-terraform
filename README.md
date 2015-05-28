@@ -61,6 +61,3 @@ Yuou should now be able to use `kubectl` to create services. See the [kubernetes
 
 ## TODO
 
-- use https for all communication
-- better security group rules. they are too open currently.
-- use tokens for user authentication for api server?
