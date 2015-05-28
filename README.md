@@ -53,7 +53,8 @@ You can use this to configure `kubectl`:
 
 ```
 kubectl config set-cluster aws-test --insecure-skip-tls-verify=true --server=$kubernetes-api-server
-kubectl config use-context  aws-test
+kubectl config set-context aws-test --cluster=aws-test
+kubectl config use-context aws-test
 ```
 
 where $kubernetes-api-server is the url from the output.
