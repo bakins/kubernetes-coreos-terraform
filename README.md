@@ -62,3 +62,9 @@ where $kubernetes-api-server is the url from the output.
 Test this by running `kubectl get nodes`
 
 Yuou should now be able to use `kubectl` to create services. See the [kubernetes examples](https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples) to get started.
+
+## TODO
+
+- use https for all communication
+- better security group rules. they are too open currently.
+- use tokens for user authentication for api server?
