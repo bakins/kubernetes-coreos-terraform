@@ -61,3 +61,17 @@ Yuou should now be able to use `kubectl` to create services. See the [kubernetes
 
 ## TODO
 
+## Differences from kubestack
+
+Most of the differences are based on my personal opionions and/or just
+trying a different approach.
+
+- We use base CoreOS image and install Kubernetes at boot time.  This
+  was originally to skip the "build image, upload, test, repeat" cycle
+  during development, but it does expose the install process more
+  clearly.
+- We use etcd in proxy mode on the master and workers rather than
+   pointing directly to etcd servers.
+- We use the etcd2 daemon included with CoreOS.  We should probably
+  install our own.
+
