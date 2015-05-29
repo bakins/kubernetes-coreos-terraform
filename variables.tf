@@ -37,3 +37,8 @@ variable "ami" {
 variable "kubernetes_version" {
     default = "0.17.1"
 }
+
+variable "etcd_version" {
+    description = "version of etcd to use"
+    default = "2.0.11"
+}

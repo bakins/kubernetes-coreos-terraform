@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e
+source /etc/kubernetes.env
+
+if [ -f /opt/etcd-${ETCD_BINARY_VERSION}/bin/etcd ]; then
+  exit 0
+fi
+
+cd /tmp
+
+if [ ! -f etcd-${ETCD_BINARY_VERSION}.tar.gz ]; then
+  curl -o etcd-${ETCD_BINARY_VERSION}.tar.gz -L -s https://github.com/coreos/etcd/releases/download/v2.0.11/etcd-v2.0.11-linux-amd64.tar.gz
+fi
+
+mkdir -p /opt/etcd-${ETCD_BINARY_VERSION}/bin
+
+tar -zxf etcd-${ETCD_BINARY_VERSION}.tar.gz
+cp etcd-v${ETCD_BINARY_VERSION}-linux-amd64/{etcd,etcdctl} /opt/etcd-${ETCD_BINARY_VERSION}/bin
+
+chmod -R 755 /opt/etcd-${ETCD_BINARY_VERSION}/bin
+
+mkdir -p /opt/bin
+for P in /opt/etcd-${ETCD_BINARY_VERSION}/bin/*; do
+  ln -sf $P /opt/bin/
+done
+
+

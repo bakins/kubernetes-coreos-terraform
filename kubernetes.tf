@@ -98,6 +98,7 @@ resource "template_file" "kubernetes" {
         containers_cidr = "${var.containers_cidr}"
         kubernetes_version = "${var.kubernetes_version}"
         portal_net = "${var.portal_net}"
+        etcd_version = "${var.etcd_version}"
     }
 }
 
@@ -131,8 +132,8 @@ resource "aws_instance" "etcd" {
 
 
     provisioner "file" {
-        source = "scripts/${self.tags.Role}.sh"
-        destination = "/tmp/${self.tags.Role}.sh"
+        source = "scripts"
+        destination = "/tmp/scripts"
     }
 
     provisioner "remote-exec" {
@@ -142,10 +143,11 @@ resource "aws_instance" "etcd" {
             "sudo mv /tmp/network.env /etc/network.env",
             "cat <<'EOF' > /tmp/kubernetes.env\n${template_file.kubernetes.rendered}\nEOF",
             "sudo mv /tmp/kubernetes.env /etc/kubernetes.env",
-            "sudo bash /tmp/${self.tags.Role}.sh"
+            "sudo bash /tmp/scripts/${self.tags.Role}.sh"
         ]
     }
 }
+
 resource "aws_instance" "master" {
     ami = "${var.ami}"
     instance_type = "t2.medium"
@@ -235,5 +237,4 @@ resource "template_file" "kubectl-config" {
 output "kubernetes-api-server" {
     value = "${template_file.kubectl-config.rendered}"
 }
-
 
