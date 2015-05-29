@@ -5,37 +5,34 @@ set -x
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 source /etc/kubernetes.env
+source $DIR/functions.sh
 
-start() {
-  systemctl daemon-reload
-  systemctl enable ${1}.service
-  systemctl start ${1}.service
-}
+setup-install-etcd
+setup-install-kubernetes
+setup-wupiao
 
-mkdir -p /etc/systemd/system/etcd2.service.d
-cat <<'EOF' > /etc/systemd/system/etcd2.service.d/50-etcd.conf
+cat <<'EOF' > /etc/systemd/system/etcd.service
+[Unit]
+Description=etcd
+
 [Service]
 Environment=ETCD_PROXY=on
 EnvironmentFile=/etc/kubernetes.env
+ExecStartPre=/opt/bin/install-etcd
+ExecStart=/opt/bin/etcd
+Restart=always
+RestartSec=10s
+LimitNOFILE=40000
+
+[Install]
+WantedBy=multi-user.target
 EOF
-
-start etcd2
-
-mkdir -p /opt/bin
-
-cp $DIR/install-kubernetes /opt/bin/install-kubernetes
-chmod +x /opt/bin/install-kubernetes
-
-cp $DIR/wupiao /opt/bin/wupiao
-chmod +x /opt/bin/wupiao
-
-/opt/bin/wupiao http://127.0.0.1:2379/v2/members
 
 mkdir -p /etc/systemd/system/flanneld.service.d
 cat <<'EOF' > /etc/systemd/system/flanneld.service.d/50-network-config.conf
 [Unit]
-Requires=etcd2.service
-After=etcd2.service
+Requires=etcd.service
+After=etcd.service
 
 [Service]
 ExecStartPre=/opt/bin/wupiao http://127.0.0.1:2379/v2/members
@@ -43,9 +40,6 @@ ExecStartPre=/opt/bin/wupiao http://127.0.0.1:2379/v2/members
 [Install]
 WantedBy=multi-user.target
 EOF
-
-start flanneld
-start docker
 
 cat <<'EOF' > /etc/systemd/system/install-kubernetes.service
 [Unit]
@@ -87,7 +81,26 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-start kube-kubelet
+cat <<'EOF' > /etc/systemd/system/kube-proxy.service
+[Unit]
+Description=Kubernetes Proxy Server
+Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+After=install-kubernetes.service
+Requires=install-kubernetes.service
+
+[Service]
+EnvironmentFile=/etc/kubernetes.env
+ExecStartPre=/opt/bin/wupiao ${KUBERNETES_MASTER}/api/v1beta3/nodes
+ExecStart=/opt/bin/kubelet \
+  --master==${KUBERNETES_MASTER}
+  --logtostderr=true \
+  --v=2
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 H=`hostname -f`
 cat <<EOF > /tmp/node.json
@@ -99,6 +112,11 @@ cat <<EOF > /tmp/node.json
   }
 }
 EOF
+
+
+for S in etcd flanneld docker kube-kubelet kube-proxy; do
+  start $S
+done
 
 /opt/bin/wupiao ${KUBERNETES_MASTER}/api/v1beta3/nodes
 kubectl --server=${KUBERNETES_MASTER} create -f /tmp/node.json

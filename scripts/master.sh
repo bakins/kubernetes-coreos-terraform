@@ -6,47 +6,28 @@ source /etc/kubernetes.env
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-start() {
-  systemctl daemon-reload
-  systemctl enable ${1}.service
-  systemctl start ${1}.service
-}
+source $DIR/functions.sh
 
-mkdir -p /etc/systemd/system/etcd2.service.d
-cat <<EOF > /etc/systemd/system/etcd2.service.d/50-etcd.conf
+setup-install-etcd
+setup-install-kubernetes
+setup-wupiao
+
+cat <<'EOF' > /etc/systemd/system/etcd.service
+[Unit]
+Description=etcd
+
 [Service]
 Environment=ETCD_PROXY=on
 EnvironmentFile=/etc/kubernetes.env
+ExecStartPre=/opt/bin/install-etcd
+ExecStart=/opt/bin/etcd
+Restart=always
+RestartSec=10s
+LimitNOFILE=40000
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-mkdir -p /opt/bin
-
-cp $DIR/install-kubernetes /opt/bin/install-kubernetes
-chmod +x /opt/bin/install-kubernetes
-
-cp $DIR/wupiao /opt/bin/wupiao
-chmod +x /opt/bin/wupiao
-
-
-cat <<EOF > /etc/systemd/system/install-kubernetes.service
-[Unit]
-Description=Install Kubernetes
-Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-Requires=network-online.target
-After=network-online.target
-
-[Service]
-ExecStart=/opt/bin/install-kubernetes
-Type=oneshot
-RemainAfterExit=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
 
 cat <<EOF > /etc/systemd/system/kube-apiserver.service
 [Unit]
@@ -77,8 +58,8 @@ EOF
 mkdir -p /etc/systemd/system/flanneld.service.d
 cat <<EOF > /etc/systemd/system/flanneld.service.d/50-network-config.conf
 [Unit]
-Requires=etcd2.service
-After=etcd2.service
+Requires=etcd.service
+After=etcd.service
 
 [Service]
 EnvironmentFile=/etc/kubernetes.env
@@ -132,6 +113,6 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-for S in etcd2 flanneld kube-apiserver kube-scheduler kube-controller-manager; do
+for S in etcd flanneld kube-apiserver kube-scheduler kube-controller-manager; do
   start $S
 done
