@@ -72,6 +72,5 @@ trying a different approach.
   clearly.
 - We use etcd in proxy mode on the master and workers rather than
    pointing directly to etcd servers.
-- We use the etcd2 daemon included with CoreOS.  We should probably
-  install our own.
+
 
