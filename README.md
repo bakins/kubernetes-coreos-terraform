@@ -57,7 +57,7 @@ Run these commands to configure `kubectl`.  You can see these commands again by 
 
 Test this by running `kubectl get nodes`
 
-Yuou should now be able to use `kubectl` to create services. See the [kubernetes examples](https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples) to get started.
+You should now be able to use `kubectl` to create services. See the [kubernetes examples](https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples) to get started.
 
 ## TODO
 
