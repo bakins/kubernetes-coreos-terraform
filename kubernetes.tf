@@ -91,7 +91,7 @@ resource "aws_security_group_rule" "allow_all_egress" {
 }
 
 resource "template_file" "kubernetes" {
-    filename = "templates/kubernetes.sh"
+    template = "templates/kubernetes.sh"
 
     vars = {
         etcd_dicovery_url = "${replace(file("etcd_discovery_url.txt"), "/\n/", "")}"
@@ -103,7 +103,7 @@ resource "template_file" "kubernetes" {
 }
 
 resource "template_file" "tokens" {
-    filename = "templates/tokens.csv"
+    template = "templates/tokens.csv"
 
     vars = {
         token = "${replace(file("kube_token.txt"), "/\n/", "")}"
@@ -226,7 +226,7 @@ resource "aws_instance" "worker" {
 }
 
 resource "template_file" "kubectl-config" {
-    filename = "templates/kubectl-config.sh"
+    template = "templates/kubectl-config.sh"
     vars = {
         cluster_name = "${var.cluster_name}"
         token = "${replace(file("kube_token.txt"), "/\n/", "")}"
