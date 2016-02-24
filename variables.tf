@@ -26,7 +26,7 @@ variable "num_etcd" {
 }
 
 variable "num_master" {
-    default = 3
+    default = 1
 }
 
 variable "num_worker" {
