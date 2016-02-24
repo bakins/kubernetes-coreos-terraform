@@ -1,0 +1,4 @@
+#/bin/bash
+openssl genrsa -out tls-assets/admin-key.pem 2048
+openssl req -new -key tls-assets/admin-key.pem -out tls-assets/admin.csr -subj "/CN=kube-admin"
+openssl x509 -req -in tls-assets/admin.csr -CA tls-assets/ca.pem -CAkey tls-assets/ca-key.pem -CAcreateserial -out tls-assets/admin.pem -days 365

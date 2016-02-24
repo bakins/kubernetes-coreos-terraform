@@ -1,0 +1,71 @@
+#cloud-config
+write-files:
+  - path: "/etc/flannel/options.env"
+    owner: "root"
+    content: |
+      FLANNELD_IFACE=$private_ipv4
+      FLANNELD_ETCD_ENDPOINTS=${FLANNELD_ETCD_ENDPOINTS}
+  - path: /opt/bin/wupiao
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # [w]ait [u]ntil [p]ort [i]s [a]ctually [o]pen
+      [ -n "$1" ] && \
+        until curl -o /dev/null -sf $${1}; do \
+          sleep 1 && echo .;
+        done;
+      exit $?
+coreos:
+  etcd2:
+    # generate a new token for each unique cluster from https://discovery.etcd.io/new?size=3
+    discovery: "${etcd_discovery_url}"
+    # multi-region and multi-cloud deployments need to use $public_ipv4
+    # initial-advertise-peer-urls: "http://$private_ipv4:2380"
+    listen-client-urls: "http://0.0.0.0:2379"
+    proxy: "on"
+  units:
+  - name: etcd2.service
+    command: start
+  - name: flanneld.service
+    command: start
+    drop-ins:
+      - name: "40-ExecStartPre-symlink.conf"
+        content: |
+          [Service]
+          ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
+      - name: "50-network-config.conf"
+        content: |
+          [Unit]
+          Requires=etcd2.service
+          After=etcd2.service
+          [Service]
+          ExecStartPre=/opt/bin/wupiao http://127.0.0.1:2379/v2/members
+          ExecStartPre=/usr/bin/etcdctl --no-sync set /coreos.com/network/config '{ "Network": "${KUBERNETES_CONTAINERS_CIDR}", "Backend":{"Type": "vxlan"} }'
+          [Install]
+          WantedBy=multi-user.target
+  - name: docker.service
+    command: start
+    drop-ins:
+      - name: "40-flannel.conf"
+        content: |
+          [Unit]
+          Requires=flanneld.service
+          After=flanneld.service
+  - name: kubelet.service
+    command: start
+    content: |
+      [Service]
+      ExecStart=/usr/bin/kubelet \
+        --api_servers=http://127.0.0.1:8080 \
+        --register-node=false \
+        --allow-privileged=true \
+        --config=/etc/kubernetes/manifests \
+        --hostname-override=$private_ipv4 \
+        --cluster-dns=${DNS_SERVICE_IP} \
+        --cluster-domain=cluster.local
+      Restart=always
+      RestartSec=10
+      [Install]
+      WantedBy=multi-user.target
+  update:
+    reboot-strategy: "off"

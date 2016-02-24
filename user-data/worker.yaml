@@ -1,0 +1,216 @@
+#cloud-config
+write-files:
+  - path: "/etc/flannel/options.env"
+    owner: "root"
+    content: |
+      FLANNELD_IFACE=$private_ipv4
+      FLANNELD_ETCD_ENDPOINTS=${FLANNELD_ETCD_ENDPOINTS}
+  - path: "/etc/kubernetes.env"
+    content: |
+      KUBERNETES_VERSION=${KUBERNETES_VERSION}
+      MASTER_HOSTS=${MASTER_HOSTS}
+      DNS_SERVICE_IP=${DNS_SERVICE_IP}
+  - path: "/tmp/setup-instance-env.sh"
+    owner: "root"
+    permissions: "0700"
+    content: |
+      #!/bin/bash
+      echo "PRIVATE_IP=$(/usr/bin/curl -s http://169.254.169.254/latest/meta-data/local-ipv4)" >> /tmp/instance.env
+      echo "PRIVATE_DNS=$(/usr/bin/curl -s http://169.254.169.254/latest/meta-data/local-hostname)" >> /tmp/instance.env
+      echo "PUBLIC_IP=$(/usr/bin/curl -s http://169.254.169.254/latest/meta-data/public-ipv4)" >> /tmp/instance.env
+      echo "PUBLIC_DNS=$(/usr/bin/curl -s http://169.254.169.254/latest/meta-data/public-hostname)" >> /tmp/instance.env
+      mv /tmp/instance.env /etc/instance.env
+  - path: "/tmp/worker-openssl.cnf"
+    owner: "root"
+    content: |
+      [req]
+      req_extensions = v3_req
+      distinguished_name = req_distinguished_name
+      [req_distinguished_name]
+      [ v3_req ]
+      basicConstraints = CA:FALSE
+      keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+      subjectAltName = @alt_names
+      [alt_names]
+      IP.1 = $ENV::WORKER_IP
+  - path: "/tmp/ca-key.pem"
+    owner: "root"
+    encoding: "base64"
+    content: |
+      ${ca_key_pem}
+  - path: "/tmp/ca.pem"
+    owner: "root"
+    encoding: "base64"
+    content: |
+      ${ca_pem}
+  - path: "/tmp/generate-tls.sh"
+    owner: "root"
+    permissions: "0700"
+    content: |
+      #!/bin/bash
+      set -e
+      set -x
+
+      SSL_TMP_DIR=/tmp/ssl
+
+      mkdir -p $${SSL_TMP_DIR}
+
+      mv /tmp/ca-key.pem $${SSL_TMP_DIR}/
+      mv /tmp/ca.pem $${SSL_TMP_DIR}/
+      mv /tmp/worker-openssl.cnf $${SSL_TMP_DIR}/
+
+      source /etc/instance.env
+
+      openssl genrsa -out $${SSL_TMP_DIR}/worker-key.pem 2048
+      WORKER_IP="$${PRIVATE_IP}" openssl req -new -key $${SSL_TMP_DIR}/worker-key.pem -out $${SSL_TMP_DIR}/worker.csr -subj "/CN=$${PRIVATE_DNS}" -config $${SSL_TMP_DIR}/worker-openssl.cnf
+      WORKER_IP="$${PRIVATE_IP}" openssl x509 -req -in $${SSL_TMP_DIR}/worker.csr -CA $${SSL_TMP_DIR}/ca.pem -CAkey $${SSL_TMP_DIR}/ca-key.pem -CAcreateserial -out $${SSL_TMP_DIR}/worker.pem -days 365 -extensions v3_req -extfile $${SSL_TMP_DIR}/worker-openssl.cnf
+
+      mkdir -p /etc/kubernetes
+      mv $${SSL_TMP_DIR} /etc/kubernetes/ssl
+  - path: "/tmp/install.sh"
+    owner: "root"
+    permissions: "0700"
+    content: |
+      #!/bin/bash
+      set -e
+      set -x
+
+      mkdir -p /etc/kubernetes/manifests
+
+      cat <<EOF > /etc/kubernetes/manifests/kube-proxy.yaml
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: kube-proxy
+        namespace: kube-system
+      spec:
+        hostNetwork: true
+        containers:
+        - name: kube-proxy
+          image: gcr.io/google_containers/hyperkube:v$${KUBERNETES_VERSION}
+          command:
+          - /hyperkube
+          - proxy
+          - --master=$${MASTER_HOSTS}
+          - --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml
+          - --proxy-mode=iptables
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /etc/ssl/certs
+              name: "ssl-certs"
+            - mountPath: /etc/kubernetes/worker-kubeconfig.yaml
+              name: "kubeconfig"
+              readOnly: true
+            - mountPath: /etc/kubernetes/ssl
+              name: "etc-kube-ssl"
+              readOnly: true
+        volumes:
+          - name: "ssl-certs"
+            hostPath:
+              path: "/usr/share/ca-certificates"
+          - name: "kubeconfig"
+            hostPath:
+              path: "/etc/kubernetes/worker-kubeconfig.yaml"
+          - name: "etc-kube-ssl"
+            hostPath:
+              path: "/etc/kubernetes/ssl"
+      EOF
+
+      cat <<EOF > /etc/kubernetes/worker-kubeconfig.yaml
+      apiVersion: v1
+      kind: Config
+      clusters:
+      - name: local
+        cluster:
+          certificate-authority: /etc/kubernetes/ssl/ca.pem
+      users:
+      - name: kubelet
+        user:
+          client-certificate: /etc/kubernetes/ssl/worker.pem
+          client-key: /etc/kubernetes/ssl/worker-key.pem
+      contexts:
+      - context:
+          cluster: local
+          user: kubelet
+        name: kubelet-context
+      current-context: kubelet-context
+      EOF
+coreos:
+  etcd2:
+    # generate a new token for each unique cluster from https://discovery.etcd.io/new?size=3
+    discovery: "${etcd_discovery_url}"
+    # multi-region and multi-cloud deployments need to use $public_ipv4
+    # initial-advertise-peer-urls: "http://$private_ipv4:2380"
+    listen-client-urls: "http://0.0.0.0:2379"
+    proxy: "on"
+  units:
+  - name: etcd2.service
+    command: start
+  - name: flanneld.service
+    command: start
+    drop-ins:
+      - name: "40-ExecStartPre-symlink.conf"
+        content: |
+          [Service]
+          ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
+  - name: docker.service
+    command: start
+    drop-ins:
+      - name: "40-flannel.conf"
+        content: |
+          [Unit]
+          Requires=flanneld.service
+          After=flanneld.service
+  - name: instance-env.service
+    content: |
+      [Unit]
+      Description=Retrieve instance environment
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/bash -c /tmp/setup-instance-env.sh
+  - name: tls-setup.service
+    content: |
+      [Unit]
+      Requires=instance-env.service
+      After=instance-env.service
+      [Service]
+      Type=oneshot
+      EnvironmentFile=/etc/instance.env
+      ExecStart=/usr/bin/bash -c /tmp/generate-tls.sh
+  - name: install-k8s.service
+    content: |
+      [Unit]
+      Requires=tls-setup.service
+      After=tls-setup.service
+      [Service]
+      Type=oneshot
+      EnvironmentFile=/etc/kubernetes.env
+      EnvironmentFile=/etc/instance.env
+      ExecStart=/usr/bin/bash -c /tmp/install.sh
+  - name: kubelet.service
+    command: start
+    content: |
+      [Unit]
+      Requires=install-k8s.service
+      After=install-k8s.service
+      [Service]
+      EnvironmentFile=/etc/kubernetes.env
+      EnvironmentFile=/etc/instance.env
+      ExecStart=/usr/bin/kubelet \
+        --api_servers=$${MASTER_HOSTS} \
+        --register-node=true \
+        --allow-privileged=true \
+        --config=/etc/kubernetes/manifests \
+        --hostname-override=$${PRIVATE_DNS} \
+        --cluster-dns=$${DNS_SERVICE_IP} \
+        --cluster-domain=cluster.local \
+        --kubeconfig=/etc/kubernetes/worker-kubeconfig.yaml \
+        --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
+        --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem
+      Restart=always
+      RestartSec=10
+      [Install]
+      WantedBy=multi-user.target
+  update:
+    reboot-strategy: "off"
