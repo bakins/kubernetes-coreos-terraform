@@ -2,7 +2,7 @@ plan: etcd_discovery_url.txt kube_token.txt tls-assets/ca-key.pem tls-assets/ca.
 	terraform plan
 
 etcd_discovery_url.txt:
-	curl -s https://discovery.etcd.io/new?size=2 > etcd_discovery_url.txt
+	curl -s https://discovery.etcd.io/new?size=3 > etcd_discovery_url.txt
 
 destroy:
 	terraform destroy

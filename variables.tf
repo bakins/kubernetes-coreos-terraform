@@ -34,7 +34,7 @@ variable "num_worker" {
 }
 
 variable "ami" {
-    default = "ami-23b58613"
+    default = "ami-66e30706"
 }
 
 variable "etcd_instance_type" {
@@ -50,12 +50,7 @@ variable "worker_instance_type" {
 }
 
 variable "kubernetes_version" {
-    default = "0.17.1"
-}
-
-variable "etcd_version" {
-    description = "version of etcd to use"
-    default = "2.0.11"
+    default = "1.1.7"
 }
 
 variable "pod_network" {
