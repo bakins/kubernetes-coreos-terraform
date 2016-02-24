@@ -6,7 +6,7 @@ Inspired by [kubestack](https://github.com/kelseyhightower/kubestack)
 
 ## Status
 
-Hot off the presses... Still in development.
+This is no longer maintained. All the versions are old. Feel free to use this to inspire you.  
 
 ## Prep
 - [Install Terraform](https://www.terraform.io/intro/getting-started/install.html)
