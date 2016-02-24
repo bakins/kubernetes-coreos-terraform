@@ -3,3 +3,4 @@
 terraform.tfvars
 etcd_discovery_url.txt
 kube_token.txt
+kubeconfig
